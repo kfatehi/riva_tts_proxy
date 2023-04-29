@@ -9,11 +9,25 @@ Avoid GRPC protocol in clients by hiding it under an HTTP JSON proxy, making it 
 
 ## Usage
 
-build the server's image with `./build.sh`
+Start the server. Be sure to forward port 5000 to somewhere on your host.
 
-start the server with `./run.sh` (or run it with the python code easily editable by using `./hack.sh`)
+```
+docker run --rm -p 5000:5000 -t riva_tts_proxy
+```
 
-make a test request with: `./test.sh`
+## Configuration
+
+The system will not work without a functional Riva stack. By default, this is expected to run on the same docker host. To change this, you may configure the RIVA_URI environment variable.
+
+You may also wish to increase the amount of web workers. This is possible using the WEB_CONCURRENCY environment variable.
+
+## Building
+
+You may build the image like so:
+
+```
+docker build -t riva_tts_proxy .
+```
 
 ## Endpoints
 
@@ -23,11 +37,12 @@ Request JSON body:
 
 ```
 {
-    "language_code"  : "en-US",
     "voice_name"     : "English-US.Female-1",
     "text"           : "Input text from which to generate speech."
 }
 ```
+
+Optionally, you may pass in "pitch" which should be a number between 0 and 2. Internally it will be scaled to the [range expected by Riva](https://docs.nvidia.com/deeplearning/riva/archives/2-1-0/user-guide/docs/tutorials/tts-python-advanced-customizationwithssml.html#pitch-attribute) using numpy.
 
 Response JSON body:
 ```
