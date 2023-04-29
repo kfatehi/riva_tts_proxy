@@ -2,6 +2,9 @@
 
 Avoid GRPC protocol in clients by hiding it under an HTTP JSON proxy, making it easier to fast-prototype.
 
+This project implements the streaming interface to Riva to get the data out as soon as possible,
+This approach results in lower latency to first audio at the cost of lower throughput.
+
 ## Prerequisites
 
 * Docker
@@ -31,6 +34,10 @@ docker build -t riva_tts_proxy .
 
 ## Endpoints
 
+### GET /voices
+
+Response with a JSON of supported voices.
+
 ### POST /tts
 
 Request JSON body:
@@ -42,15 +49,4 @@ Request JSON body:
 }
 ```
 
-Optionally, you may pass in "pitch" which should be a number between 0 and 2. Internally it will be scaled to the [range expected by Riva](https://docs.nvidia.com/deeplearning/riva/archives/2-1-0/user-guide/docs/tutorials/tts-python-advanced-customizationwithssml.html#pitch-attribute) using numpy.
-
-Response JSON body:
-```
-{
-    "path": "/path/to/wav"
-}
-```
-
-This route also accepts a GET request in a format like that of IBM Watson.
-This was implemented in order to support this integration with the [ReadAloud browser extension](https://readaloud.app/).
-See the related pull request here: https://github.com/ken107/read-aloud/pull/321
+Response is an OGG vorbis audio stream.

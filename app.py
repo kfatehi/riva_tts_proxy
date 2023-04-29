@@ -108,47 +108,6 @@ def tts():
     # Serve the OGG file
     return send_file(output_buffer, mimetype="audio/ogg")
 
-def generate_audio_stream(resp, sample_rate_hz, pts):
-    audio_samples = np.frombuffer(resp.audio, dtype=np.int16)
-
-    # Create an empty audio frame
-    frame = av.AudioFrame(format='s16', layout='mono', samples=len(audio_samples))
-    frame.sample_rate = sample_rate_hz
-
-    # Fill in the audio frame's plane with the raw audio samples
-    frame.planes[0].update(audio_samples.tobytes())
-
-    # Set the frame's PTS
-    frame.pts = pts
-
-    # Create an output buffer
-    output_buffer = io.BytesIO()
-
-    # Create an OGG container with the output buffer
-    output_container = av.open(output_buffer, mode='w', format='ogg')
-    output_stream = output_container.add_stream("libopus", rate=48000)
-
-    # Encode and mux packets into the output container
-    for packet in output_stream.encode(frame):
-        output_container.mux(packet)
-        # Yield the chunk as soon as it's ready
-        data = output_buffer.getvalue()
-        if data:
-            yield data
-            output_buffer.seek(0)
-            output_buffer.truncate()
-
-    # Flush any remaining packets
-    for packet in output_stream.encode(None):
-        output_container.mux(packet)
-
-    output_container.close()
-
-    # Yield the remaining chunk
-    data = output_buffer.getvalue()
-    if data:
-        yield data
-
 def generate_silence(duration_ms, sample_rate_hz):
     silence_samples = np.zeros(int(duration_ms * sample_rate_hz / 1000), dtype=np.int16)
     return silence_samples.tobytes()
@@ -158,13 +117,32 @@ def tts_streaming_generator(reqs, sample_rate_hz):
     for i, req in enumerate(reqs):
         responses = riva_tts.synthesize_online(**req)
         for resp in responses:
-            yield from generate_audio_stream(resp, sample_rate_hz, pts)
+            output_buffer = io.BytesIO()
+            output_container = av.open(output_buffer, mode='w', format='ogg')
+            output_stream = output_container.add_stream("libopus", rate=sample_rate_hz)
+            audio_samples = np.frombuffer(resp.audio, dtype=np.int16)
+            frame = av.AudioFrame(format='s16', layout='mono', samples=len(audio_samples))
+            frame.sample_rate = sample_rate_hz
+            frame.planes[0].update(audio_samples.tobytes())
+            frame.pts = pts
+            for packet in output_stream.encode(frame):
+                output_container.mux(packet)
+                data = output_buffer.getvalue()
+                if data:
+                    yield data
+                    output_buffer.seek(0)
+                    output_buffer.truncate()
 
-        # Add silence between sentences except for the last one
-        if i < len(reqs) - 1:
-            silence_duration_ms = 300  # Adjust this value to change the silence duration
-            silence_data = generate_silence(silence_duration_ms, sample_rate_hz)
-            yield silence_data
+            # Flush any remaining packets
+            for packet in output_stream.encode(None):
+                output_container.mux(packet)
+
+            output_container.close()
+
+            # Yield the remaining chunk
+            data = output_buffer.getvalue()
+            if data:
+                yield data
 
 @app.route('/tts', methods=['POST'])
 def tts_streaming():
