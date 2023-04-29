@@ -37,5 +37,5 @@ Response JSON body:
 ```
 
 This route also accepts a GET request in a format like that of IBM Watson.
-This was implemented in order to support this integration with the ReadAloud chrome extension.
+This was implemented in order to support this integration with the [ReadAloud browser extension](https://readaloud.app/).
 See the related pull request here: https://github.com/ken107/read-aloud/pull/321

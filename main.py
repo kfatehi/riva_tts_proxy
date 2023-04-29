@@ -5,7 +5,7 @@ import riva.client
 import wave
 import ffmpeg
 from io import BytesIO
-from flask import Flask, request, jsonify, send_from_directory, send_file
+from flask import Flask, request, jsonify, send_from_directory, send_file, after_this_request
 
 app = Flask(__name__)
 auth = riva.client.Auth(uri=os.getenv('RIVA_URI'))
@@ -75,8 +75,14 @@ def tts():
         converted_output_path = os.path.join('public', converted_output_file)
 
         stream = ffmpeg.input(output_path)
-        stream = ffmpeg.output(stream, converted_output_path, format='ogg', codec='libopus', acodec='libopus')
+        stream = ffmpeg.output(stream, converted_output_path, audio_bitrate='64k', format='ogg', acodec='libopus')
         ffmpeg.run(stream)
+        
+        @after_this_request
+        def cleanup(response):
+            os.remove(output_path)
+            os.remove(converted_output_path)
+            return response
         return send_file(converted_output_path)
 
     else:
