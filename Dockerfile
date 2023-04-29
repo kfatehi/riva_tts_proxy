@@ -19,6 +19,11 @@ RUN python3 -m pip install --upgrade pip
 RUN pip install numpy
 RUN pip install nvidia-riva-client
 RUN pip install flask
+RUN pip install ffmpeg-python
+USER root
+RUN apt update
+RUN apt install -y ffmpeg
+USER user
 ADD . app
 WORKDIR app
 ENV PORT=5000
