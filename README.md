@@ -15,7 +15,7 @@ This approach results in lower latency to first audio at the cost of lower throu
 Start the server. Be sure to forward port 5000 to somewhere on your host.
 
 ```
-docker run --rm -p 5000:5000 -t riva_tts_proxy
+docker run --rm -p 5000:5000 -t keyvanfatehi/riva_tts_proxy:latest
 ```
 
 ## Configuration
@@ -29,7 +29,7 @@ You may also wish to increase the amount of web workers. This is possible using 
 You may build the image like so:
 
 ```
-docker build -t riva_tts_proxy .
+docker build -t keyvanfatehi/riva_tts_proxy:latest .
 ```
 
 ## Endpoints
