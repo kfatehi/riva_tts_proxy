@@ -1,9 +1,8 @@
-# Riva GRPC to HTTP JSON API Proxy
+# Nvidia Riva TTS Proxy
 
-Avoid GRPC protocol in clients by hiding it under an HTTP JSON proxy, making it easier to fast-prototype.
+This webserver wraps the Nvidia Riva gRPC client within an easy-to-use HTTP JSON API
 
-This project implements the streaming interface to Riva to get the data out as soon as possible,
-This approach results in lower latency to first audio at the cost of lower throughput.
+Nvidia Riva is a next-gen text-to-speech system. The text-to-speech (TTS) pipeline implemented for the Riva TTS service is based on a two-stage pipeline. Riva first generates a mel-spectrogram using the first model, and then generates speech using the second model. This pipeline forms a TTS system that enables you to synthesize natural sounding speech from raw transcripts without any additional information such as patterns or rhythms of speech.
 
 ## Prerequisites
 
@@ -39,6 +38,23 @@ docker build -t keyvanfatehi/riva_tts_proxy:latest .
 Response with a JSON of supported voices.
 
 ### POST /tts
+
+Synthesize text using Riva TTS in streaming mode. When making a streaming request, audio chunks are returned as soon as they are generated, significantly reducing the latency (as measured by time to first audio) for large requests.
+
+Request JSON body:
+
+```
+{
+    "voice_name"     : "English-US.Female-1",
+    "text"           : "Input text from which to generate speech."
+}
+```
+
+Response is an OGG vorbis audio stream.
+
+### POST /tts_batch
+
+Synthesize text using Riva TTS in batch mode.  In batch mode, audio is not returned until the full audio sequence for the requested text is generated and can achieve higher throughput.
 
 Request JSON body:
 

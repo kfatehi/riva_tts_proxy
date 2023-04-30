@@ -1,15 +1,12 @@
 import os
-import uuid
 import numpy as np
 import riva.client
 import io
 import av
 import wave
 import copy
-import itertools
-
 from datetime import datetime
-from flask import Flask, request, jsonify, send_from_directory, send_file, after_this_request
+from flask import Flask, request, jsonify, send_file
 from nltk.tokenize import sent_tokenize
 
 app = Flask(__name__)
@@ -64,16 +61,20 @@ def tts_requests_from_http_request():
         new_data["text"] = sentence
         new_data_list.append(new_data)
 
-    print(datetime.now(), request.access_route[-1], new_data_list)
+    print(datetime.now(), request.path, request.access_route[-1], new_data_list)
     return new_data_list
 
 @app.route('/tts_batch', methods=['POST'])
-def tts():
-    req = tts_request_from_http_request()
+def tts_batch():
+    reqs = tts_requests_from_http_request()
+    audio_samples_list = []
 
-    resp = riva_tts.synthesize(**req)
+    for i, req in enumerate(reqs):
+        resp = riva_tts.synthesize(**req)
+        audio_samples = np.frombuffer(resp.audio, dtype=np.int16)
+        audio_samples_list.append(audio_samples)
 
-    audio_samples = np.frombuffer(resp.audio, dtype=np.int16)
+    concatenated_audio_samples = np.concatenate(audio_samples_list)
 
     # Create a WAV file in memory
     wav_buffer = io.BytesIO()
@@ -91,7 +92,7 @@ def tts():
     output_buffer = io.BytesIO()
 
     output_container = av.open(output_buffer, mode='w', format='ogg')
-    output_stream = output_container.add_stream("libopus", rate=48000)
+    output_stream = output_container.add_stream("libopus", rate=sample_rate_hz)
 
     for frame in input_container.decode(audio=0):
         for packet in output_stream.encode(frame):
