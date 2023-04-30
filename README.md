@@ -4,10 +4,13 @@ This webserver wraps the Nvidia Riva gRPC client within an easy-to-use HTTP JSON
 
 Nvidia Riva is a next-gen text-to-speech system. The text-to-speech (TTS) pipeline implemented for the Riva TTS service is based on a two-stage pipeline. Riva first generates a mel-spectrogram using the first model, and then generates speech using the second model. This pipeline forms a TTS system that enables you to synthesize natural sounding speech from raw transcripts without any additional information such as patterns or rhythms of speech.
 
-## Prerequisites
+## Requirements
 
 * Docker
 * [Nvidia Riva](https://docs.nvidia.com/deeplearning/riva/user-guide/docs/quick-start-guide.html)
+    - NVIDIA GPU with >=15 GB of VRAM (works great on a 4090)
+
+Note about memory usage: I tried to turn off the other features in Riva but it seems to load all models regardless. This may be because I would have to run "riva_init.sh" again, but it takes very long so I'm unwilling to perform that test. "riva_start.sh" should just be respecting the config, but it loads all the models, therefore I cannot recommend people try this without a large enough GPU.
 
 ## Usage
 
