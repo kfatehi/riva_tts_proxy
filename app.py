@@ -9,7 +9,7 @@ import copy
 import itertools
 
 from datetime import datetime
-from flask import Flask, Response, request, jsonify, send_from_directory, send_file, after_this_request
+from flask import Flask, request, jsonify, send_from_directory, send_file, after_this_request
 from nltk.tokenize import sent_tokenize
 
 app = Flask(__name__)
@@ -108,10 +108,6 @@ def tts():
     # Serve the OGG file
     return send_file(output_buffer, mimetype="audio/ogg")
 
-def generate_silence(duration_ms, sample_rate_hz):
-    silence_samples = np.zeros(int(duration_ms * sample_rate_hz / 1000), dtype=np.int16)
-    return silence_samples.tobytes()
-
 def tts_streaming_generator(reqs, sample_rate_hz):
     pts = 0
     for i, req in enumerate(reqs):
@@ -151,7 +147,8 @@ def tts_streaming():
     # Create a generator that will synthesize and stream each request as soon as it's ready
     continuous_stream = tts_streaming_generator(reqs, sample_rate_hz)
 
-    return Response(continuous_stream, mimetype="audio/ogg")
+    return continuous_stream, {'Content-Type':"audio/ogg"}
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=os.getenv("PORT"))
