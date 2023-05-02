@@ -69,3 +69,7 @@ Request JSON body:
 ```
 
 Response is an OGG vorbis audio stream.
+
+## Example Clients
+
+- For the Comma 3 (arm computer) https://github.com/kfatehi/tici-developer-setup/blob/master/scripts/riva-tts.py
