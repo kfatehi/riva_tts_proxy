@@ -8,6 +8,8 @@ import copy
 from datetime import datetime
 from flask import Flask, request, jsonify, send_file
 from nltk.tokenize import sent_tokenize
+from retry import retry
+from grpc._channel import _MultiThreadedRendezvous
 
 app = Flask(__name__)
 auth = riva.client.Auth(uri=os.getenv('RIVA_URI'))
@@ -50,7 +52,11 @@ def tts_requests_from_http_request():
         "voice_name": data.get("voice", "English-US.Female-1")
     }
 
-    text = data["text"]
+    if "text" in data:
+        text = data["text"]
+    else:
+        return []
+
     sentences = [f'<speak><prosody pitch="{pitch}" rate="{rate}">{sentence}</prosody></speak>' for sentence in sent_tokenize(text)]
     # riva tts does not support sentences so we have to handle splitting this paragraph into separate requests
     # loop through sentences, copying all data dictionary attributes, but set "text" to the sentence, and then return the dictionaries        
@@ -73,8 +79,6 @@ def tts_batch():
         resp = riva_tts.synthesize(**req)
         audio_samples = np.frombuffer(resp.audio, dtype=np.int16)
         audio_samples_list.append(audio_samples)
-
-    concatenated_audio_samples = np.concatenate(audio_samples_list)
 
     # Create a WAV file in memory
     wav_buffer = io.BytesIO()
@@ -109,6 +113,7 @@ def tts_batch():
     # Serve the OGG file
     return send_file(output_buffer, mimetype="audio/ogg")
 
+@retry(tries=5, exceptions=(_MultiThreadedRendezvous,))
 def tts_streaming_generator(reqs, sample_rate_hz):
     pts = 0
     for i, req in enumerate(reqs):
@@ -145,10 +150,13 @@ def tts_streaming_generator(reqs, sample_rate_hz):
 def tts_streaming():
     reqs = tts_requests_from_http_request()
 
-    # Create a generator that will synthesize and stream each request as soon as it's ready
-    continuous_stream = tts_streaming_generator(reqs, sample_rate_hz)
+    if len(reqs) > 0:
+        # Create a generator that will synthesize and stream each request as soon as it's ready
+        continuous_stream = tts_streaming_generator(reqs, sample_rate_hz)
 
-    return continuous_stream, {'Content-Type':"audio/ogg"}
+        return continuous_stream, {'Content-Type':"audio/ogg"}
+    else:
+        return "Bad request", 400
 
 
 if __name__ == '__main__':
