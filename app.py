@@ -10,6 +10,7 @@ from flask import Flask, request, jsonify, send_file
 from nltk.tokenize import sent_tokenize
 from retry import retry
 from grpc._channel import _MultiThreadedRendezvous
+import grpc
 
 app = Flask(__name__)
 auth = riva.client.Auth(uri=os.getenv('RIVA_URI'))
@@ -70,89 +71,81 @@ def tts_requests_from_http_request():
     print(datetime.now(), request.path, request.access_route[-1], new_data_list)
     return new_data_list
 
-@app.route('/tts_batch', methods=['POST'])
-def tts_batch():
-    reqs = tts_requests_from_http_request()
-    audio_samples_list = []
+def gen_wav_header(sample_rate, bits_per_sample, channels, datasize):
+    o = bytes("RIFF", 'ascii')  # (4byte) Marks file as RIFF
+    o += (datasize + 36).to_bytes(4, 'little')  # (4byte) File size in bytes excluding this and RIFF marker
+    o += bytes("WAVE", 'ascii')  # (4byte) File type
+    o += bytes("fmt ", 'ascii')  # (4byte) Format Chunk Marker
+    o += (16).to_bytes(4, 'little')  # (4byte) Length of above format data
+    o += (1).to_bytes(2, 'little')  # (2byte) Format type (1 - PCM)
+    o += channels.to_bytes(2, 'little')  # (2byte)
+    o += sample_rate.to_bytes(4, 'little')  # (4byte)
+    o += (sample_rate * channels * bits_per_sample // 8).to_bytes(4, 'little')  # (4byte)
+    o += (channels * bits_per_sample // 8).to_bytes(2, 'little')  # (2byte)
+    o += bits_per_sample.to_bytes(2, 'little')  # (2byte)
+    o += bytes("data", 'ascii')  # (4byte) Data Chunk Marker
+    o += datasize.to_bytes(4, 'little')  # (4byte) Data size in bytes
+    return o
 
-    for i, req in enumerate(reqs):
-        resp = riva_tts.synthesize(**req)
-        audio_samples = np.frombuffer(resp.audio, dtype=np.int16)
-        audio_samples_list.append(audio_samples)
-
-    # Create a WAV file in memory
-    wav_buffer = io.BytesIO()
-    with wave.open(wav_buffer, 'wb') as wav_file:
-        wav_file.setnchannels(1)
-        wav_file.setsampwidth(2)
-        wav_file.setframerate(sample_rate_hz)
-        wav_file.writeframes(audio_samples.tobytes())
-
-    # Rewind the buffer
-    wav_buffer.seek(0)
-
-    # Convert WAV to OGG using PyAV
-    input_container = av.open(wav_buffer, mode='r')
-    output_buffer = io.BytesIO()
-
-    output_container = av.open(output_buffer, mode='w', format='ogg')
-    output_stream = output_container.add_stream("libopus", rate=sample_rate_hz)
-
-    for frame in input_container.decode(audio=0):
-        for packet in output_stream.encode(frame):
-            output_container.mux(packet)
-
-    for packet in output_stream.encode(None):
-        output_container.mux(packet)
-
-    output_container.close()
-
-    # Rewind the output buffer
-    output_buffer.seek(0)
-
-    # Serve the OGG file
-    return send_file(output_buffer, mimetype="audio/ogg")
-
-@retry(tries=5, exceptions=(_MultiThreadedRendezvous,))
-def tts_streaming_generator(reqs, sample_rate_hz):
+@retry(tries=5, exceptions=(_MultiThreadedRendezvous, grpc.RpcError))
+def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
     pts = 0
+    if output_format == None:
+        wav_header = gen_wav_header(sample_rate_hz, 16, 1, 0)
+        yield wav_header
+
     for i, req in enumerate(reqs):
         responses = riva_tts.synthesize_online(**req)
         for resp in responses:
-            output_buffer = io.BytesIO()
-            output_container = av.open(output_buffer, mode='w', format='ogg')
-            output_stream = output_container.add_stream("libopus", rate=sample_rate_hz)
-            audio_samples = np.frombuffer(resp.audio, dtype=np.int16)
-            frame = av.AudioFrame(format='s16', layout='mono', samples=len(audio_samples))
-            frame.sample_rate = sample_rate_hz
-            frame.planes[0].update(audio_samples.tobytes())
-            frame.pts = pts
-            for packet in output_stream.encode(frame):
-                output_container.mux(packet)
+            if output_format == None:
+                yield resp.audio
+            else:
+                output_buffer = io.BytesIO()
+                output_container = av.open(output_buffer, mode='w', format=output_format)
+                output_stream = output_container.add_stream(output_codec, rate=sample_rate_hz)
+                audio_samples = np.frombuffer(resp.audio, dtype=np.int16)
+                frame = av.AudioFrame(format='s16', layout='mono', samples=len(audio_samples))
+                frame.sample_rate = sample_rate_hz
+                frame.planes[0].update(audio_samples.tobytes())
+                frame.pts = pts
+                for packet in output_stream.encode(frame):
+                    output_container.mux(packet)
+                    data = output_buffer.getvalue()
+                    if data:
+                        yield data
+                        output_buffer.seek(0)
+                        output_buffer.truncate()
+
+                # Flush any remaining packets
+                for packet in output_stream.encode(None):
+                    output_container.mux(packet)
+
+                output_container.close()
+
+                # Yield the remaining chunk
                 data = output_buffer.getvalue()
                 if data:
                     yield data
-                    output_buffer.seek(0)
-                    output_buffer.truncate()
 
-            # Flush any remaining packets
-            for packet in output_stream.encode(None):
-                output_container.mux(packet)
-
-            output_container.close()
-
-            # Yield the remaining chunk
-            data = output_buffer.getvalue()
-            if data:
-                yield data
+def get_format_and_codec(accept_header):
+    if accept_header.startswith('audio/webm'):
+        return 'webm', 'libopus'
+    elif accept_header.startswith('audio/ogg'):
+        return 'ogg', 'libopus'
+    elif accept_header.startswith('audio/mpeg'):
+        return 'mp3', 'libmp3lame'
+    else:
+        return None, None
 
 @app.route('/tts', methods=['POST'])
 def tts_streaming():
     reqs = tts_requests_from_http_request()
+    accept_header = request.headers.get('Accept')
+    output_format, output_codec = get_format_and_codec(accept_header)
 
     if len(reqs) > 0:
         # Create a generator that will synthesize and stream each request as soon as it's ready
-        continuous_stream = tts_streaming_generator(reqs, sample_rate_hz)
+        continuous_stream = tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec)
 
         return continuous_stream, {'Content-Type':"audio/ogg"}
     else:

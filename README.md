@@ -44,6 +44,8 @@ Response with a JSON of supported voices.
 
 Synthesize text using Riva TTS in streaming mode. When making a streaming request, audio chunks are returned as soon as they are generated, significantly reducing the latency (as measured by time to first audio) for large requests.
 
+Riva TTS does not support multiple-sentence is one request, however this endpoint will automatically split them for you using the NLTK package and feed the synthesized audio for each sentence back to you as part of a continuous stream.
+
 Request JSON body:
 
 ```
@@ -53,9 +55,16 @@ Request JSON body:
 }
 ```
 
-Response is an OGG vorbis audio stream.
+Response is an audio stream based on provided Accept header. If you do not provide one, you will receive unencoded WAV directly from Riva TTS.
 
-### POST /tts_batch
+If you would like to use an encoding, set Accept to one of:
+- audio/webm
+- audio/ogg
+- audio/mpeg
+
+I've found that audio/mpeg provides the greatest compatibility with browser APIs, mainly, the picky, yet powerful [MediaSource](https://developer.mozilla.org/en-US/docs/Web/API/MediaSource) API
+
+### POST /tts_batch (removed for now)
 
 Synthesize text using Riva TTS in batch mode.  In batch mode, audio is not returned until the full audio sequence for the requested text is generated and can achieve higher throughput.
 
@@ -68,7 +77,7 @@ Request JSON body:
 }
 ```
 
-Response is an OGG vorbis audio stream.
+This endpoint has been removed due to a reworking of the streaming endpoint and a desire to collapse these functionalities into as similar of an implementation as possible. Will do this later once the need arises for batch.
 
 ## Example Clients
 
