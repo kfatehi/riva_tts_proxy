@@ -71,6 +71,16 @@ def tts_requests_from_http_request():
     print(datetime.now(), request.path, request.access_route[-1], new_data_list)
     return new_data_list
 
+def get_format_and_codec(accept_header):
+    if accept_header.startswith('audio/webm'):
+        return 'webm', 'libopus'
+    elif accept_header.startswith('audio/ogg'):
+        return 'ogg', 'libopus'
+    elif accept_header.startswith('audio/mpeg'):
+        return 'mp3', 'libmp3lame'
+    else:
+        return None, None
+
 def gen_wav_header(sample_rate, bits_per_sample, channels, datasize):
     o = bytes("RIFF", 'ascii')  # (4byte) Marks file as RIFF
     o += (datasize + 36).to_bytes(4, 'little')  # (4byte) File size in bytes excluding this and RIFF marker
@@ -118,27 +128,12 @@ def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
                         yield data
                         output_buffer.seek(0)
                         output_buffer.truncate()
-
-                # Flush any remaining packets
                 for packet in output_stream.encode(None):
                     output_container.mux(packet)
-
                 output_container.close()
-
-                # Yield the remaining chunk
                 data = output_buffer.getvalue()
                 if data:
                     yield data
-
-def get_format_and_codec(accept_header):
-    if accept_header.startswith('audio/webm'):
-        return 'webm', 'libopus'
-    elif accept_header.startswith('audio/ogg'):
-        return 'ogg', 'libopus'
-    elif accept_header.startswith('audio/mpeg'):
-        return 'mp3', 'libmp3lame'
-    else:
-        return None, None
 
 @app.route('/tts', methods=['POST'])
 def tts_streaming():
