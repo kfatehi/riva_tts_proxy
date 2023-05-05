@@ -106,6 +106,10 @@ def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
     if output_format == None:
         wav_header = gen_wav_header(sample_rate_hz, 16, 1, 0)
         yield wav_header
+    else:
+        output_buffer = io.BytesIO()
+        output_container = av.open(output_buffer, mode='w', format=output_format)
+        output_stream = output_container.add_stream(output_codec, rate=sample_rate_hz)
 
     for i, req in enumerate(reqs):
         responses = synthesize_online_with_retry(**req)
@@ -113,9 +117,6 @@ def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
             if output_format == None:
                 yield resp.audio
             else:
-                output_buffer = io.BytesIO()
-                output_container = av.open(output_buffer, mode='w', format=output_format)
-                output_stream = output_container.add_stream(output_codec, rate=sample_rate_hz)
                 audio_samples = np.frombuffer(resp.audio, dtype=np.int16)
                 if len(audio_samples) > 0:
                     frame = av.AudioFrame(format='s16', layout='mono', samples=len(audio_samples))
@@ -130,12 +131,14 @@ def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
                             output_buffer.seek(0)
                             output_buffer.truncate()
                     pts += frame.samples  # Update the pts value with the number of samples in the frame
-                output_container.close()  # Close the output container
-                data = output_buffer.getvalue()
-                if data:
-                    yield data
 
-
+    if output_format != None:
+        for packet in output_stream.encode(None):  # Drain remaining frames
+            output_container.mux(packet)
+        output_container.close()  # Close the output container
+        data = output_buffer.getvalue()
+        if data:
+            yield data
 
 
 @app.route('/tts', methods=['POST'])
