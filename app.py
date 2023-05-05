@@ -21,7 +21,7 @@ def timeit(func):
         result = func(*args, **kwargs)
         end_time = time.time()
         duration = end_time - start_time
-        print(f"{func.__name__} executed in {duration:.4f}.")
+        print(f"{func.__name__} executed in {duration:.4f} seconds")
         return result
     return wrapper
 
@@ -81,7 +81,6 @@ def tts_requests_from_http_request():
         new_data["text"] = sentence
         new_data_list.append(new_data)
 
-    print(datetime.now(), request.path, request.access_route[-1], new_data_list)
     return new_data_list
 
 def get_format_and_codec(accept_header):
@@ -152,6 +151,7 @@ def synthesize_with_retry(**kwargs):
 def synthesize_online_with_retry(**kwargs):
     return riva_tts.synthesize_online(**kwargs)
 
+@timeit
 def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
     pts = 0
     if output_format == None:
@@ -198,7 +198,9 @@ def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
 
 
 @app.route('/tts', methods=['POST'])
+@timeit
 def tts_streaming():
+    print(datetime.now(), request.path, request.access_route[-1])
     reqs = tts_requests_from_http_request()
     accept_header = request.headers.get('Accept')
     output_format, output_codec, content_type = get_format_and_codec(accept_header)
