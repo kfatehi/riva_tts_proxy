@@ -117,23 +117,26 @@ def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
                 output_container = av.open(output_buffer, mode='w', format=output_format)
                 output_stream = output_container.add_stream(output_codec, rate=sample_rate_hz)
                 audio_samples = np.frombuffer(resp.audio, dtype=np.int16)
-                frame = av.AudioFrame(format='s16', layout='mono', samples=len(audio_samples))
-                frame.sample_rate = sample_rate_hz
-                frame.planes[0].update(audio_samples.tobytes())
-                frame.pts = pts
-                for packet in output_stream.encode(frame):
-                    output_container.mux(packet)
-                    data = output_buffer.getvalue()
-                    if data:
-                        yield data
-                        output_buffer.seek(0)
-                        output_buffer.truncate()
-                for packet in output_stream.encode(None):
-                    output_container.mux(packet)
-                output_container.close()
+                if len(audio_samples) > 0:
+                    frame = av.AudioFrame(format='s16', layout='mono', samples=len(audio_samples))
+                    frame.sample_rate = sample_rate_hz
+                    frame.planes[0].update(audio_samples.tobytes())
+                    frame.pts = pts
+                    for packet in output_stream.encode(frame):
+                        output_container.mux(packet)
+                        data = output_buffer.getvalue()
+                        if data:
+                            yield data
+                            output_buffer.seek(0)
+                            output_buffer.truncate()
+                    pts += frame.samples  # Update the pts value with the number of samples in the frame
+                output_container.close()  # Close the output container
                 data = output_buffer.getvalue()
                 if data:
                     yield data
+
+
+
 
 @app.route('/tts', methods=['POST'])
 def tts_streaming():
