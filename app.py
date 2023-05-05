@@ -73,13 +73,13 @@ def tts_requests_from_http_request():
 
 def get_format_and_codec(accept_header):
     if accept_header.startswith('audio/webm'):
-        return 'webm', 'libopus'
+        return 'webm', 'libopus', 'audio/webm'
     elif accept_header.startswith('audio/ogg'):
-        return 'ogg', 'libopus'
+        return 'ogg', 'libopus', 'audio/ogg'
     elif accept_header.startswith('audio/mpeg'):
-        return 'mp3', 'libmp3lame'
+        return 'mp3', 'libmp3lame', 'audio/mpeg'
     else:
-        return None, None
+        return None, None, "audio/wav"
 
 def gen_wav_header(sample_rate, bits_per_sample, channels, datasize):
     o = bytes("RIFF", 'ascii')  # (4byte) Marks file as RIFF
@@ -145,13 +145,14 @@ def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
 def tts_streaming():
     reqs = tts_requests_from_http_request()
     accept_header = request.headers.get('Accept')
-    output_format, output_codec = get_format_and_codec(accept_header)
+    output_format, output_codec, content_type = get_format_and_codec(accept_header)
 
     if len(reqs) > 0:
         # Create a generator that will synthesize and stream each request as soon as it's ready
         continuous_stream = tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec)
 
-        return continuous_stream, {'Content-Type':"audio/ogg"}
+        print("Responding with content type: "+content_type)
+        return continuous_stream, {'Content-Type':content_type}
     else:
         return "Bad request", 400
 
