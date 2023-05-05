@@ -11,6 +11,19 @@ from nltk.tokenize import sent_tokenize
 from retry import retry
 from grpc._channel import _MultiThreadedRendezvous
 import grpc
+import time
+from functools import wraps
+
+def timeit(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        end_time = time.time()
+        duration = end_time - start_time
+        print(f"{func.__name__} executed in {duration:.4f}.")
+        return result
+    return wrapper
 
 app = Flask(__name__)
 auth = riva.client.Auth(uri=os.getenv('RIVA_URI'))
@@ -102,7 +115,17 @@ def gen_wav_header(sample_rate, bits_per_sample, channels, datasize):
 # In batch mode, audio is not returned until the full audio sequence for the requested text is generated and can achieve higher throughput.
 # --
 # Higher quality audio (less artifacting)
+# --
+# synthesize_with_retry took 0.1825 seconds to execute.
+# synthesize_with_retry took 0.0567 seconds to execute.
+# synthesize_with_retry took 0.0760 seconds to execute.
+# synthesize_with_retry took 0.0346 seconds to execute.
+# synthesize_with_retry took 0.1112 seconds to execute.
+# synthesize_with_retry took 0.2034 seconds to execute.
+# synthesize_with_retry took 0.0313 seconds to execute.
+# Fast enough, right?
 @retry(tries=5, exceptions=(_MultiThreadedRendezvous, grpc.RpcError))
+@timeit
 def synthesize_with_retry(**kwargs):
     return riva_tts.synthesize(**kwargs)
 
@@ -115,7 +138,17 @@ def synthesize_with_retry(**kwargs):
 # but frankly given that we have to tokenize sentences anyway, Riva is so fast,
 # and it's unclear if I am waiting for the whole array of samples anyway from this function,
 # it just makes more sense to use the batch method.
+# --
+# synthesize_online_with_retry took 0.0004 seconds to execute.
+# synthesize_online_with_retry took 0.0003 seconds to execute.
+# synthesize_online_with_retry took 0.0003 seconds to execute.
+# synthesize_online_with_retry took 0.0003 seconds to execute.
+# synthesize_online_with_retry took 0.0003 seconds to execute.
+# synthesize_online_with_retry took 0.0004 seconds to execute.
+# synthesize_online_with_retry took 0.0003 seconds to execute.
+# Very fast, but the artifacts are a dealbreaker.
 @retry(tries=5, exceptions=(_MultiThreadedRendezvous, grpc.RpcError))
+@timeit
 def synthesize_online_with_retry(**kwargs):
     return riva_tts.synthesize_online(**kwargs)
 
