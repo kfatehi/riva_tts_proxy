@@ -88,6 +88,9 @@ def gen_wav_header(sample_rate, bits_per_sample, channels, datasize):
     return o
 
 @retry(tries=5, exceptions=(_MultiThreadedRendezvous, grpc.RpcError))
+def synthesize_online_with_retry(**kwargs):
+    return riva_tts.synthesize_online(**kwargs)
+
 def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
     pts = 0
     if output_format == None:
@@ -95,7 +98,7 @@ def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
         yield wav_header
 
     for i, req in enumerate(reqs):
-        responses = riva_tts.synthesize_online(**req)
+        responses = synthesize_online_with_retry(**req)
         for resp in responses:
             if output_format == None:
                 yield resp.audio
