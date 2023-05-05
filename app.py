@@ -97,6 +97,24 @@ def gen_wav_header(sample_rate, bits_per_sample, channels, datasize):
     o += datasize.to_bytes(4, 'little')  # (4byte) Data size in bytes
     return o
 
+##
+# Synthesize text using Riva TTS in batch mode.
+# In batch mode, audio is not returned until the full audio sequence for the requested text is generated and can achieve higher throughput.
+# --
+# Higher quality audio (less artifacting)
+@retry(tries=5, exceptions=(_MultiThreadedRendezvous, grpc.RpcError))
+def synthesize_with_retry(**kwargs):
+    return riva_tts.synthesize(**kwargs)
+
+##
+# Synthesize text using Riva TTS in streaming mode.
+# When making a streaming request, audio chunks are returned as soon as they are generated, significantly reducing the latency (as measured by time to first audio) for large requests.
+# --
+# I guess this can get the audio out faster but I hear artifacts.
+# I am not sure if this is due to how I am feeding samples into the encoder or what,
+# but frankly given that we have to tokenize sentences anyway, Riva is so fast,
+# and it's unclear if I am waiting for the whole array of samples anyway from this function,
+# it just makes more sense to use the batch method.
 @retry(tries=5, exceptions=(_MultiThreadedRendezvous, grpc.RpcError))
 def synthesize_online_with_retry(**kwargs):
     return riva_tts.synthesize_online(**kwargs)
@@ -112,7 +130,12 @@ def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
         output_stream = output_container.add_stream(output_codec, rate=sample_rate_hz)
 
     for i, req in enumerate(reqs):
-        responses = synthesize_online_with_retry(**req)
+        ##
+        # Can use either the batch or streaming mechanism here
+        # but the batch one is higher quality and just as fast
+        # especially considering inputs are tokenized anyway.
+        # responses = synthesize_online_with_retry(**req)
+        responses = [synthesize_with_retry(**req)]
         for resp in responses:
             if output_format == None:
                 yield resp.audio
