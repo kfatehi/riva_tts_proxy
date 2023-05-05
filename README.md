@@ -1,8 +1,12 @@
 # Nvidia Riva TTS Proxy
 
-This webserver wraps the Nvidia Riva gRPC client within an easy-to-use HTTP JSON API
-
 Nvidia Riva is a next-gen text-to-speech system. The text-to-speech (TTS) pipeline implemented for the Riva TTS service is based on a two-stage pipeline. Riva first generates a mel-spectrogram using the first model, and then generates speech using the second model. This pipeline forms a TTS system that enables you to synthesize natural sounding speech from raw transcripts without any additional information such as patterns or rhythms of speech.
+
+This webserver wraps the Nvidia Riva gRPC client within an easy-to-use HTTP JSON API. It also handles some shortcomings of using Riva TTS directly, these are:
+- sentence tokenization (Riva does not support more than once sentence per inference request)
+- automatic retry (inference fails for unknown reasons, randomly, rarely, but annoyingly. This can be safely retried without being seen by the client and happens so fast it is not noticed, so we do it here.)
+- streaming output of batch-mode inference outputs (batch mode sounds better, but means you can't stream, but we are tokenizing sentences anyway, so we stream batch mode)
+- transcoding into various (per-request, user-selected) formats using PyAV
 
 ## Requirements
 
@@ -11,6 +15,8 @@ Nvidia Riva is a next-gen text-to-speech system. The text-to-speech (TTS) pipeli
     - NVIDIA GPU with >=15 GB of VRAM (works great on a 4090)
 
 Note about memory usage: I tried to turn off the other features in Riva but it seems to load all models regardless. This may be because I would have to run "riva_init.sh" again, but it takes very long so I'm unwilling to perform that test. "riva_start.sh" should just be respecting the config, but it loads all the models, therefore I cannot recommend people try this without a large enough GPU.
+
+With that said, the [support matrix](https://docs.nvidia.com/deeplearning/riva/user-guide/docs/support-matrix.html) indicates that you only need 2.1GB for the TTS model.
 
 ## Usage
 
@@ -42,20 +48,30 @@ Response with a JSON of supported voices.
 
 ### POST /tts
 
-Synthesize text using Riva TTS in streaming mode. When making a streaming request, audio chunks are returned as soon as they are generated, significantly reducing the latency (as measured by time to first audio) for large requests.
+* Riva TTS does not support multiple sentences is one request, so this endpoint will automatically split them for you using the NLTK package.
+* Riva TTS has a streaming function, but it produces audio artifacts compared to batch, so we feed the synthesized audio for each sentence into the batch mode.
+* If you chose an encoding (Accept header), the audio is transcoded automatically. The output stream of the transcoder is shipped to your client as soon as possible.
+* If you did not choose an encoding, the outputs (per sentence) from the batch-mode synthesizer are shipped to your client as soon as possible
 
-Riva TTS does not support multiple-sentence is one request, however this endpoint will automatically split them for you using the NLTK package and feed the synthesized audio for each sentence back to you as part of a continuous stream.
+Headers:
 
-Request JSON body:
+```
+Content-Type: application/json
+Accept: audio/webm
+```
+
+Body:
 
 ```
 {
     "voice_name"     : "English-US.Female-1",
-    "text"           : "Input text from which to generate speech."
+    "text"           : "Input text from which to generate speech. Feel free to use multiple sentences. There is no artificial pause between sentences. Want there to be? Contribute to the project."
 }
 ```
 
-Response is an audio stream based on provided Accept header. If you do not provide one, you will receive unencoded WAV directly from Riva TTS.
+N.B.
+
+Response is an audio stream based on provided Accept header. If you do not provide one, you will receive audio/wav.
 
 If you would like to use an encoding, set Accept to one of:
 - audio/webm
@@ -64,21 +80,9 @@ If you would like to use an encoding, set Accept to one of:
 
 I've found that audio/mpeg provides the greatest compatibility with browser APIs, mainly, the picky, yet powerful [MediaSource](https://developer.mozilla.org/en-US/docs/Web/API/MediaSource) API
 
-### POST /tts_batch (removed for now)
+## Known Uses
 
-Synthesize text using Riva TTS in batch mode.  In batch mode, audio is not returned until the full audio sequence for the requested text is generated and can achieve higher throughput.
+- Python: Linux client using `aplay` (written for the Comma 3, which is an ARM computer) https://github.com/kfatehi/tici-developer-setup/blob/master/scripts/riva-tts.py
+- JavaScript: A Text-To-Speech browser extension called Read Aloud https://github.com/ken107/read-aloud/pull/321
 
-Request JSON body:
-
-```
-{
-    "voice_name"     : "English-US.Female-1",
-    "text"           : "Input text from which to generate speech."
-}
-```
-
-This endpoint has been removed due to a reworking of the streaming endpoint and a desire to collapse these functionalities into as similar of an implementation as possible. Will do this later once the need arises for batch.
-
-## Example Clients
-
-- For the Comma 3 (arm computer) https://github.com/kfatehi/tici-developer-setup/blob/master/scripts/riva-tts.py
+Are you using this project? Please add it to the list.
