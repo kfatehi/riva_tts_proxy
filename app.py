@@ -26,7 +26,7 @@ def timeit(func):
     return wrapper
 
 app = Flask(__name__)
-auth = riva.client.Auth(uri=os.getenv('RIVA_URI'))
+auth = riva.client.Auth(uri=os.getenv('RIVA_URI', 'localhost:50051'))
 riva_tts = riva.client.SpeechSynthesisService(auth)
 sample_rate_hz = 48000
 
