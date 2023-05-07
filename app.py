@@ -14,6 +14,7 @@ import grpc
 import time
 from functools import wraps
 import sapi5
+import coqui
 
 def timeit(func):
     @wraps(func)
@@ -40,11 +41,13 @@ VOICES = [
     {"voiceName": "English-US.Female-1", "lang": "en", "gender": "Female"},
     {"voiceName": "English-US.Male-1", "lang": "en", "gender": "Male"},
     {"voiceName": "English-US-RadTTS.Female-1", "lang": "en", "gender": "Female"},
-    {"voiceName": "English-US-RadTTS.Male-1", "lang": "en", "gender": "Male"}
+    {"voiceName": "English-US-RadTTS.Male-1", "lang": "en", "gender": "Male"},
+    {"voiceName": "Persian-IR.Female-1", "lang": "fa", "gender": "Female"}
 ]
 RIVA_VOICES = [voice["voiceName"] for voice in VOICES]
 VOICES.extend(voice for voice in sapi5.voices())
 SAPI5_VOICES = [voice["voiceName"] for voice in VOICES if voice["voiceName"] not in RIVA_VOICES]
+COQUI_VOICES = ["Persian-IR.Female-1"]
 
 @app.route('/voices')
 def voices():
@@ -54,7 +57,9 @@ def tts_requests_from_http_request():
     data = request.json
     voice_name = data.get("voice", "English-US.Female-1")
     output_list = []
-    if voice_name in SAPI5_VOICES:
+    if voice_name in COQUI_VOICES:
+        output_list.append({ "coqui": True, "voice": voice_name, "text": data["text"] })
+    elif voice_name in SAPI5_VOICES:
         # sapi5 freaks out on multiline inputs so let's split on newlines.
         for text in data["text"].split("\n"):
             text = text.strip()
@@ -188,6 +193,9 @@ def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
         if "sapi5" in req:
             responses_define_input_sample_rate = True
             responses = [sapi5.synthesize(req["text"], req["voice"])]
+        elif "coqui" in req:
+            responses_define_input_sample_rate = True
+            responses = [coqui.synthesize(req["text"])]
         else:
             responses = [synthesize_with_retry(**req)]
 
