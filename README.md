@@ -20,10 +20,41 @@ With that said, the [support matrix](https://docs.nvidia.com/deeplearning/riva/u
 
 ## Usage
 
+## Docker Usage
+
 Start the server. Be sure to forward port 5000 to somewhere on your host.
 
 ```
 docker run --rm -p 5000:5000 -t keyvanfatehi/riva_tts_proxy:latest
+```
+
+## Windows Usage
+
+Running directly on Windows has an extra feature: the ability to add extra voices that are available through the SAPI 5 system
+
+This has absolutely nothing to do with Windows, but because this proxy asserts an HTTP protocol for voice, it makes sense to expand on it for multiple backends, including SAPI 5.
+
+To expose a SAPI 5 voice through this proxy, create the file `sapi5_voices.ini` with some voices. Here is an example of a paid voice that I have installed and exposed:
+
+```
+[Voice1]
+name = Dariush Premium
+lang = fa
+gender = Male
+locator = dariush premium
+sample_rate_hz = 22000
+```
+
+Then you can install the required pip packages:
+
+```
+pip install -r requirements.txt
+```
+
+Finally run the program:
+
+```
+python app.py
 ```
 
 ## Configuration

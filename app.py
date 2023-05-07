@@ -13,6 +13,7 @@ from grpc._channel import _MultiThreadedRendezvous
 import grpc
 import time
 from functools import wraps
+import sapi5
 
 def timeit(func):
     @wraps(func)
@@ -41,47 +42,59 @@ VOICES = [
     {"voiceName": "English-US-RadTTS.Female-1", "lang": "en", "gender": "Female"},
     {"voiceName": "English-US-RadTTS.Male-1", "lang": "en", "gender": "Male"}
 ]
+RIVA_VOICES = [voice["voiceName"] for voice in VOICES]
+VOICES.extend(voice for voice in sapi5.voices())
+SAPI5_VOICES = [voice["voiceName"] for voice in VOICES if voice["voiceName"] not in RIVA_VOICES]
 
 @app.route('/voices')
 def voices():
     return jsonify(VOICES)
 
-
 def tts_requests_from_http_request():
     data = request.json
-    pitch = "1"
-    rate = "100%"
-    if "pitch" in data:
-        input_range = (0, 2)
-        output_range = (-3, 3) # https://docs.nvidia.com/deeplearning/riva/archives/2-1-0/user-guide/docs/tutorials/tts-python-advanced-customizationwithssml.html#pitch-attribute
-        pitch = str(np.interp(float(data["pitch"]), input_range, output_range))
-    if "rate" in data:
-        input_range = (0, 3)
-        output_range = (25, 250) # https://docs.nvidia.com/deeplearning/riva/archives/2-1-0/user-guide/docs/tutorials/tts-python-advanced-customizationwithssml.html#rate-attribute
-        rate = str(int(np.interp(float(data["rate"]), input_range, output_range)))+"%"
-    req = {
-        "language_code": "en-US",
-        "encoding": riva.client.AudioEncoding.LINEAR_PCM,
-        "sample_rate_hz": sample_rate_hz,
-        "voice_name": data.get("voice", "English-US.Female-1")
-    }
-
-    if "text" in data:
-        text = data["text"]
+    voice_name = data.get("voice", "English-US.Female-1")
+    output_list = []
+    if voice_name in SAPI5_VOICES:
+        # sapi5 freaks out on multiline inputs so let's split on newlines.
+        for text in data["text"].split("\n"):
+            text = text.strip()
+            if len(text) == 0:
+                continue 
+            output_list.append({ "sapi5": True, "voice": voice_name, "text": text })
     else:
-        return []
 
-    sentences = [f'<speak><prosody pitch="{pitch}" rate="{rate}">{sentence}</prosody></speak>' for sentence in sent_tokenize(text)]
-    # riva tts does not support sentences so we have to handle splitting this paragraph into separate requests
-    # loop through sentences, copying all data dictionary attributes, but set "text" to the sentence, and then return the dictionaries        
-    new_data_list = []
+        pitch = "1"
+        rate = "100%"
+        if "pitch" in data:
+            input_range = (0, 2)
+            output_range = (-3, 3) # https://docs.nvidia.com/deeplearning/riva/archives/2-1-0/user-guide/docs/tutorials/tts-python-advanced-customizationwithssml.html#pitch-attribute
+            pitch = str(np.interp(float(data["pitch"]), input_range, output_range))
+        if "rate" in data:
+            input_range = (0, 3)
+            output_range = (25, 250) # https://docs.nvidia.com/deeplearning/riva/archives/2-1-0/user-guide/docs/tutorials/tts-python-advanced-customizationwithssml.html#rate-attribute
+            rate = str(int(np.interp(float(data["rate"]), input_range, output_range)))+"%"
+        req = {
+            "language_code": "en-US",
+            "encoding": riva.client.AudioEncoding.LINEAR_PCM,
+            "sample_rate_hz": sample_rate_hz,
+            "voice_name": voice_name
+        }
 
-    for sentence in sentences:
-        new_data = copy.deepcopy(req)
-        new_data["text"] = sentence
-        new_data_list.append(new_data)
+        if "text" in data:
+            text = data["text"]
+        else:
+            return []
 
-    return new_data_list
+        sentences = [f'<speak><prosody pitch="{pitch}" rate="{rate}">{sentence}</prosody></speak>' for sentence in sent_tokenize(text)]
+        # riva tts does not support sentences so we have to handle splitting this paragraph into separate requests
+        # loop through sentences, copying all data dictionary attributes, but set "text" to the sentence, and then return the dictionaries        
+
+        for sentence in sentences:
+            new_data = copy.deepcopy(req)
+            new_data["text"] = sentence
+            output_list.append(new_data)
+
+    return output_list
 
 def get_format_and_codec(accept_header):
     if accept_header.startswith('audio/webm'):
@@ -168,15 +181,27 @@ def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
         # but the batch one is higher quality and just as fast
         # especially considering inputs are tokenized anyway.
         # responses = synthesize_online_with_retry(**req)
-        responses = [synthesize_with_retry(**req)]
+        responses = []
+
+        responses_define_input_sample_rate = False
+        input_sample_rate = sample_rate_hz
+        if "sapi5" in req:
+            responses_define_input_sample_rate = True
+            responses = [sapi5.synthesize(req["text"], req["voice"])]
+        else:
+            responses = [synthesize_with_retry(**req)]
+
         for resp in responses:
+            if responses_define_input_sample_rate:
+                input_sample_rate = resp.sample_rate_hz
+
             if output_format == None:
                 yield resp.audio
             else:
                 audio_samples = np.frombuffer(resp.audio, dtype=np.int16)
                 if len(audio_samples) > 0:
                     frame = av.AudioFrame(format='s16', layout='mono', samples=len(audio_samples))
-                    frame.sample_rate = sample_rate_hz
+                    frame.sample_rate = input_sample_rate  # Use the resp sample rate instead of sample_rate_hz
                     frame.planes[0].update(audio_samples.tobytes())
                     frame.pts = pts
                     for packet in output_stream.encode(frame):
@@ -187,6 +212,7 @@ def tts_streaming_generator(reqs, sample_rate_hz, output_format, output_codec):
                             output_buffer.seek(0)
                             output_buffer.truncate()
                     pts += frame.samples  # Update the pts value with the number of samples in the frame
+
 
     if output_format != None:
         for packet in output_stream.encode(None):  # Drain remaining frames
