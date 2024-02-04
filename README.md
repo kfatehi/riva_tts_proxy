@@ -18,6 +18,12 @@ Note about memory usage: I tried to turn off the other features in Riva but it s
 
 With that said, the [support matrix](https://docs.nvidia.com/deeplearning/riva/user-guide/docs/support-matrix.html) indicates that you only need 2.1GB for the TTS model.
 
+## Getting Riva
+
+1. You need to setup an Nvidia NGC account so that you can generate an API key here https://ngc.nvidia.com/setup/api-key
+2. Install NGC client from here https://ngc.nvidia.com/setup/installers/cli -- N.B. I use it from WSL2, so I grab the linux amd64 binary and add it to my PATH. 
+3. Follow the quick start guide here https://docs.nvidia.com/deeplearning/riva/user-guide/docs/quick-start-guide.html which will tell you how to install Riva by downloading their scripts with NGC CLI.
+
 ## Usage
 
 Start the server. Be sure to forward port 5000 to somewhere on your host.
@@ -25,6 +31,8 @@ Start the server. Be sure to forward port 5000 to somewhere on your host.
 ```
 docker run --rm -p 5000:5000 -t keyvanfatehi/riva_tts_proxy:latest
 ```
+
+Now you can use it, for example, from the ReadAloud extension by entering http://localhost:5000 into the Riva TTS proxy server section.
 
 ## Configuration
 
