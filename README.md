@@ -29,7 +29,7 @@ With that said, the [support matrix](https://docs.nvidia.com/deeplearning/riva/u
 Start the server. Be sure to forward port 5000 to somewhere on your host.
 
 ```
-docker run --rm -p 5000:5000 -t keyvanfatehi/riva_tts_proxy:latest
+docker run -d -p 5000:5000 --restart unless-stopped --name riva_tts_proxy -t keyvanfatehi/riva_tts_proxy:latest
 ```
 
 Now you can use it, for example, from the ReadAloud extension by entering http://localhost:5000 into the Riva TTS proxy server section.
